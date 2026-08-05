@@ -96,7 +96,7 @@
 
     <script>
         let currentScore = 0;
-        let globalAngle = Math.PI; 
+        let globalAngle = Math.PI; // Persistent state variable declared globally
         let animationFrameId = null;
 
         function renderGauge(score, needleAngleTarget) {
@@ -123,14 +123,14 @@
             ctx.fillStyle = '#ffffff';
             ctx.fill();
 
-            // 1. Draw Red Zone (Bearish)
+            // 1. Draw Red Zone
             ctx.beginPath();
             ctx.arc(cx, cy, radius, Math.PI, Math.PI + 1.22);
             ctx.lineWidth = thickness;
             ctx.strokeStyle = '#e05353';
             ctx.stroke();
 
-            // 2. Draw Blue Zone (Bullish)
+            // 2. Draw Blue Zone
             ctx.beginPath();
             ctx.arc(cx, cy, radius, Math.PI + 1.92, 2 * Math.PI);
             ctx.lineWidth = thickness;
@@ -222,16 +222,17 @@
 
                 tooltip.style.opacity = '1';
                 
+                // Updated tooltips matching the 0.5 / 0.1 threshold scheme
                 if (angle >= Math.PI && angle < Math.PI + 1.22) {
-                    tooltip.innerText = "Very Bearish CAD (Score < -0.3)";
+                    tooltip.innerText = "Very Bearish CAD (Score < -0.5)";
                 } else if (angle >= Math.PI + 1.22 && angle < Math.PI + 1.48) {
-                    tooltip.innerText = "Bearish CAD (Score < -0.06)";
+                    tooltip.innerText = "Bearish CAD (Score < -0.1)";
                 } else if (angle >= Math.PI + 1.48 && angle < Math.PI + 1.66) {
-                    tooltip.innerText = "Neutral CAD";
+                    tooltip.innerText = "Neutral CAD (-0.1 to 0.1)";
                 } else if (angle >= Math.PI + 1.66 && angle < Math.PI + 1.92) {
-                    tooltip.innerText = "Bullish CAD (Score > 0.06)";
+                    tooltip.innerText = "Bullish CAD (Score > 0.1)";
                 } else {
-                    tooltip.innerText = "Very Bullish CAD (Score > 0.3)";
+                    tooltip.innerText = "Very Bullish CAD (Score > 0.5)";
                 }
             } else {
                 tooltip.style.opacity = '0';
@@ -244,24 +245,21 @@
 
         async function loadLiveGauge() {
             try {
-                const response = await fetch('/api/data');
-                const resultData = await response.json();
-                
-                // Handle array response returned by your Flask endpoint
-                const data = Array.isArray(resultData) ? resultData[0] : resultData;
-                
-                const score = (data && data.score !== undefined) ? parseFloat(data.score) : 0; 
+                const response = await fetch('/api/score');
+                const data = await response.json();
+                const score = data.score; 
+                const notionStatus = data.status; // Fetches the live formatted string from Notion
                 currentScore = score;
 
-                // Scale boundaries matching Notion formula ranges (-0.3 to +0.3)
-                const minVal = -0.3; 
-                const maxVal = 0.3;
+                const minVal = -0.5;
+                const maxVal = 0.5;
                 let clampedScore = Math.max(minVal, Math.min(maxVal, score));
                 let normalized = (clampedScore - minVal) / (maxVal - minVal);
                 const targetAngle = Math.PI + (normalized * Math.PI);
 
                 if (animationFrameId) cancelAnimationFrame(animationFrameId);
 
+                // HARD RESET: Immediately jump the tracking angle back to the extreme left baseline (Math.PI) before animating up to target
                 globalAngle = Math.PI;
 
                 function animate() {
@@ -276,23 +274,18 @@
                 const headerEl = document.getElementById('headerTitle');
                 const statusEl = document.getElementById('statusText');
                 
+                // Display the score number at the bottom text field
                 statusEl.innerText = score.toFixed(4);
 
-                // Sentiment evaluation headers for CAD
-                if (score > 0.3) {
-                    headerEl.innerText = "Very Bullish CAD";
+                // Directly assign the text string pulled straight from your Notion Database 'Bias' property
+                headerEl.innerText = notionStatus;
+
+                // Dynamically adjust header background color based on the text content
+                if (notionStatus.includes("Bullish")) {
                     headerEl.style.backgroundColor = "#2f65d8";
-                } else if (score > 0.06) {
-                    headerEl.innerText = "Bullish CAD";
-                    headerEl.style.backgroundColor = "#2f65d8";
-                } else if (score < -0.3) {
-                    headerEl.innerText = "Very Bearish CAD";
-                    headerEl.style.backgroundColor = "#e05353";
-                } else if (score < -0.06) {
-                    headerEl.innerText = "Bearish CAD";
+                } else if (notionStatus.includes("Bearish")) {
                     headerEl.style.backgroundColor = "#e05353";
                 } else {
-                    headerEl.innerText = "Neutral CAD";
                     headerEl.style.backgroundColor = "#555555";
                 }
 
@@ -303,7 +296,7 @@
         }
 
         loadLiveGauge();
-        setInterval(loadLiveGauge, 30000);
+        setInterval(loadLiveGauge, 2000);
     </script>
 </body>
 </html>
